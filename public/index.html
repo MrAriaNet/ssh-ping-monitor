@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SSH Ping Monitor</title>
+    <meta name="author" content="Aria Jahangiri Far">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        #stats {
+            margin-top: 20px;
+            font-size: 1.1em;
+        }
+        #alert-box {
+            margin-top: 10px;
+            color: red;
+            font-weight: bold;
+        }
+        #chart-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 30px auto;
+        }
+        canvas {
+            width: 100% !important;
+            height: 300px !important;
+        }
+        table {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #343a40;
+            color: white;
+        }
+        .success {
+            background-color: #d4edda;
+        }
+        .fail {
+            background-color: #f8d7da;
+        }
+        #last-update {
+            margin-top: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>SSH Ping Monitor</h1>
+
+    <div id="stats">
+        Success: <span id="success-count">0</span> | Fail: <span id="fail-count">0</span>
+    </div>
+
+    <div id="alert-box"></div>
+
+    <div id="chart-container">
+        <canvas id="pingChart"></canvas>
+    </div>
+
+    <table id="ping-table">
+        <thead>
+            <tr>
+                <th>Source Server</th>
+                <th>Target Server</th>
+                <th>Status</th>
+                <th>Ping Time (ms)</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div id="last-update"></div>
+
+    <script>
+        const socket = io();
+        const tbody = document.querySelector("#ping-table tbody");
+        const ctx = document.getElementById('pingChart').getContext('2d');
+
+        const pingChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: []
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Ping Time (ms)' }
+                    }
+                }
+            }
+        });
+
+        const serverColors = {};
+        const tableRows = {};
+        let successCount = 0;
+        let failCount = 0;
+
+        socket.on('initialData', (records) => {
+            records.forEach(r => {
+                addRecord(r.source, r.target, r.success, r.time, new Date(r.timestamp).toLocaleTimeString());
+            });
+            updateStats();
+        });
+
+        socket.on('pingResults', (data) => {
+            const now = new Date(data.timestamp).toLocaleTimeString();
+            data.results.forEach(r => {
+                addRecord(data.server, r.target, r.success, r.time, now);
+            });
+            document.getElementById('last-update').innerText = `Last Update: ${now}`;
+            updateStats();
+        });
+
+        function addRecord(source, target, success, time, timestamp) {
+            const key = `${source}-${target}`;
+            const datasetLabel = `${source} → ${target}`;
+
+            let dataset = pingChart.data.datasets.find(d => d.label === datasetLabel);
+            if (!dataset) {
+                const color = getRandomColor();
+                dataset = {
+                    label: datasetLabel,
+                    data: [],
+                    borderColor: color,
+                    backgroundColor: color,
+                    fill: false
+                };
+                pingChart.data.datasets.push(dataset);
+            }
+
+            dataset.data.push(time !== null ? time : 0);
+            if (dataset.data.length > 20) dataset.data.shift();
+
+            if (!pingChart.data.labels.includes(timestamp)) {
+                pingChart.data.labels.push(timestamp);
+                if (pingChart.data.labels.length > 20) pingChart.data.labels.shift();
+            }
+            pingChart.update();
+
+            if (!tableRows[key]) {
+                const tr = document.createElement('tr');
+                tr.id = key.replace(/\s+/g, '_');
+                tr.innerHTML = `
+                    <td>${source}</td>
+                    <td>${target}</td>
+                    <td id="${key}-status">-</td>
+                    <td id="${key}-time">-</td>
+                `;
+                tbody.appendChild(tr);
+                tableRows[key] = { success: null };
+            }
+
+            const statusCell = document.getElementById(`${key}-status`);
+            const timeCell = document.getElementById(`${key}-time`);
+            statusCell.innerText = success ? '✅ Success' : '❌ Fail';
+            statusCell.parentElement.className = success ? 'success' : 'fail';
+            timeCell.innerText = time !== null ? time : '-';
+
+            if (tableRows[key].success !== success) {
+                if (!success) {
+                    failCount++;
+                    showAlert(`${source} cannot reach ${target}`);
+                } else {
+                    successCount++;
+                }
+                tableRows[key].success = success;
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('success-count').innerText = successCount;
+            document.getElementById('fail-count').innerText = failCount;
+        }
+
+        function showAlert(message) {
+            const alertBox = document.getElementById('alert-box');
+            alertBox.innerText = message;
+            setTimeout(() => {
+                alertBox.innerText = '';
+            }, 5000);
+        }
+
+        function getRandomColor() {
+            return `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`;
+        }
+    </script>
+
+</body>
+</html>
