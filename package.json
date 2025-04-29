@@ -1,0 +1,15 @@
+{
+  "name": "ssh-ping-monitor",
+  "version": "1.0.0",
+  "description": "SSH Live Ping Monitor with SQLite and Alerts",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ssh2": "^1.11.0",
+    "socket.io": "^4.7.2",
+    "sqlite3": "^5.1.6"
+  }
+}
